@@ -5,10 +5,12 @@ import os
 import os.path
 import shutil
 import time
-from os.path import dirname, exists, isdir, isfile, join
+from datetime import datetime
+from os.path import basename, dirname, exists, isdir, isfile, join, relpath
 from shutil import rmtree
+from zipfile import ZIP_DEFLATED, ZipFile
 
-from userbot import CMD_HELP
+from userbot import CMD_HELP, TEMP_DOWNLOAD_DIRECTORY
 from userbot.events import register
 from userbot.utils import humanbytes
 
@@ -145,13 +147,62 @@ async def rname(event):
     await event.edit(f"Renamed `{cat}` to `{new_path}`")
 
 
+@register(outgoing=True, pattern=r"^\.zip (.*)")
+async def zip(event):
+    if event.fwd_from:
+        return
+    input_str = event.pattern_match.group(1)
+    path = input_str
+    zip_name = ""
+    if "|" in input_str:
+        path, zip_name = path.split("|")
+        path = path.strip()
+        zip_name = zip_name.strip()
+    if exists(path):
+        await event.edit("`Zipping...`")
+        start_time = datetime.now()
+        if isdir(path):
+            dir_path = path.split("/")[-1]
+            if path.endswith("/"):
+                dir_path = path.split("/")[-2]
+            zip_path = join(TEMP_DOWNLOAD_DIRECTORY, dir_path) + ".zip"
+            if zip_name:
+                zip_path = join(TEMP_DOWNLOAD_DIRECTORY, zip_name)
+                if not zip_name.endswith(".zip"):
+                    zip_path += ".zip"
+            with ZipFile(zip_path, "w", ZIP_DEFLATED) as zip:
+                for roots, _, files in os.walk(path):
+                    for file in files:
+                        files_path = join(roots, file)
+                        arc_path = join(dir_path, relpath(files_path, path))
+                        zip.write(files_path, arc_path)
+            end_time = (datetime.now() - start_time).seconds
+            await event.edit(
+                f"Zipped `{path}` into `{zip_path}` in `{end_time}` seconds."
+            )
+        elif isfile(path):
+            file_name = basename(path)
+            zip_path = join(TEMP_DOWNLOAD_DIRECTORY, file_name) + ".zip"
+            if zip_name:
+                zip_path = join(TEMP_DOWNLOAD_DIRECTORY, zip_name)
+                if not zip_name.endswith(".zip"):
+                    zip_path += ".zip"
+            with ZipFile(zip_path, "w", ZIP_DEFLATED) as zip:
+                zip.write(path, file_name)
+            await event.edit(f"Zipped `{path}` into `{zip_path}`")
+    else:
+        await event.edit("`404: Not Found`")
+
+
 CMD_HELP.update(
     {
         "file": ">`.ls` <directory>"
         "\nUsage: Get list file inside directory."
         "\n\n>`.rm` <directory/file>"
-        "\nUsage: remove file or directory"
+        "\nUsage: Remove file or directory"
         "\n\n>`.rn` <directory/file> | <new name>"
-        "\nUsage: rename file or directory"
+        "\nUsage: Rename file or directory"
+        "\n\n>`.zip` <file/folder path> | <zip name> (optional)"
+        "\nUsage: For zipping file or folder."
     }
 )
